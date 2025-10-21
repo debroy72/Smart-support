@@ -1,0 +1,56 @@
+- id: license_expired
+  pattern: "(?i)(license).*(expired|invalid|validation failed)"
+  scope: message
+  label: "License Check Failure"
+  severity: High
+  root_cause: "Expired or invalid license token"
+  recommend:
+    - "Verify license expiry in admin portal"
+    - "Reissue license token"
+
+- id: db_timeout
+  pattern: "(?i)(database|db).*(timeout|timed out|connection refused)"
+  scope: message
+  label: "Database Timeout"
+  severity: High
+  root_cause: "Database unreachable or slow"
+  recommend:
+    - "Check DB health and network"
+    - "Inspect slow queries and connection pool"
+
+- id: auth_failed
+  pattern: "(?i)(auth|authentication|login).*(failed|invalid credentials)"
+  scope: message
+  label: "Authentication Failure"
+  severity: Medium
+  root_cause: "User credentials invalid or identity provider issue"
+  recommend:
+    - "Prompt password reset or MFA check"
+    - "Verify IdP availability"
+
+- id: null_pointer
+  pattern: "(?i)(null reference|null pointer|NoneType)"
+  scope: message
+  label: "Null Pointer/Reference"
+  severity: Medium
+  root_cause: "Unhandled None/null value in code path"
+  recommend:
+    - "Add guard checks and defaults"
+    - "Capture variables around failure"
+
+- id: http_5xx
+  pattern: "(?i)\\b(5\\d{2})\\b.*(GET|POST|PUT|DELETE)"
+  label: "HTTP 5xx"
+  severity: Medium
+  root_cause: "Upstream service error"
+  recommend:
+    - "Check upstream service health dashboard"
+    - "Inspect error rate SLO for the route"
+- id: disk_full
+  pattern: "(?i)(no space left on device|disk full|ENOSPC)"
+  label: "Disk Full"
+  severity: High
+  root_cause: "Host/volume out of space"
+  recommend:
+    - "Clear old logs or expand volume"
+    - "Add log rotation"

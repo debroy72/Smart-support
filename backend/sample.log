@@ -1,0 +1,27 @@
+2025-10-15T12:00:01Z [INFO] api-server host1 - Request started for /login
+2025-10-15T12:00:02Z [WARN] db-service host2 - Slow query detected: SELECT * FROM orders WHERE ...
+2025-10-15T12:00:03Z [ERROR] db-service host2 - Database connection timed out after 30s
+2025-10-15T12:00:04Z [INFO] api-server host1 - Response 200 OK /login user=alice
+2025-10-15T12:01:15Z [INFO] scheduler host3 - Running daily metrics aggregation
+2025-10-15T12:01:17Z [ERROR] scheduler host3 - License validation failed: expired token
+2025-10-15T12:01:17Z [INFO] scheduler host3 - Attempting license revalidation...
+2025-10-15T12:01:18Z [INFO] scheduler host3 - License renewed successfully
+2025-10-15T12:02:00Z [WARN] auth-service host4 - Failed login attempt for user=bob
+2025-10-15T12:02:01Z [ERROR] auth-service host4 - Authentication failed: invalid credentials
+2025-10-15T12:02:01Z [INFO] api-server host1 - Response 401 /login user=bob
+2025-10-15T12:03:44Z [ERROR] db-service host2 - Database connection timed out after 30s
+2025-10-15T12:03:45Z [ERROR] db-service host2 - Database connection timed out after 30s
+2025-10-15T12:03:45Z [ERROR] db-service host2 - Database connection timed out after 30s
+2025-10-15T12:04:10Z [INFO] api-server host1 - Request /healthcheck OK
+2025-10-15T12:05:15Z [WARN] queue-worker host5 - Retry #3 for job=invoice_sync
+2025-10-15T12:05:45Z [ERROR] queue-worker host5 - Job invoice_sync failed permanently: HTTP 504
+2025-10-15T12:06:10Z [INFO] api-server host1 - Healthcheck passed (latency=90ms)
+2025-10-15T12:06:15Z [WARN] auth-service host4 - Failed login attempt for user=dave
+2025-10-15T12:06:16Z [ERROR] auth-service host4 - Authentication failed: invalid credentials
+2025-10-15T12:06:30Z [INFO] api-server host1 - Response 401 /login user=dave
+2025-10-15T12:07:00Z [ERROR] db-service host2 - Database connection timed out after 30s
+2025-10-15T12:07:01Z [ERROR] db-service host2 - Database connection timed out after 30s
+2025-10-15T12:07:02Z [ERROR] db-service host2 - Database connection timed out after 30s
+2025-10-15T12:08:00Z [INFO] cache-service host6 - Cache warmup complete
+2025-10-15T12:08:10Z [WARN] api-server host1 - High latency detected: 2100ms
+2025-10-15T12:08:11Z [INFO] api-server host1 - Response 200 OK /checkout user=carol

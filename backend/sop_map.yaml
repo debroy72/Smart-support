@@ -1,0 +1,15 @@
+# backend/sop_map.yaml
+License Check Failure:
+  links:
+    - title: "Renew license token"
+      url: "https://intranet/sop/licenses#renew"
+  snippets:
+    - "Verify license validity in admin portal; reissue token if expired."
+Database Timeout:
+  links:
+    - title: "DB health runbook"
+      url: "https://intranet/sop/db#timeouts"
+Authentication Failure:
+  links:
+    - title: "IdP status / reset flow"
+      url: "https://intranet/sop/auth#failed-login"

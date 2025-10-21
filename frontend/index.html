@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartSupport</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2a7 7 0 0 1 7 7v1h1a2 2 0 1 1 0 4h-1v1a7 7 0 1 1-14 0v-1H4a2 2 0 1 1 0-4h1V9a7 7 0 0 1 7-7Z"/>
+        </svg>
+        <div>
+          <h1>SmartSupport</h1>
+          <p class="muted">AI-powered log analysis</p>
+        </div>
+      </div>
+      <div class="actions">
+        <label class="file">
+          <input id="file" type="file" />
+          <span>Choose file</span>
+        </label>
+        <button id="run" class="primary">Analyze</button>
+        <button id="exportPdf" class="ghost">Export PDF</button>
+        <button id="reindex" class="ghost">Reindex SOP</button>
+        <button id="clusterBtn" class="warn">Discover New Patterns</button>
+        <span id="status" class="status"></span>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <div class="field grow">
+        <label for="search">Search incidents</label>
+        <input id="search" type="text" placeholder="Filter by label (e.g. database, license, auth)" />
+      </div>
+      <div class="field">
+        <label>Severity</label>
+        <div class="segmented">
+          <button data-sev="ALL" class="seg active">All</button>
+          <button data-sev="High" class="seg">High</button>
+          <button data-sev="Medium" class="seg">Medium</button>
+          <button data-sev="Low" class="seg">Low</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="sortBy">Sort</label>
+        <select id="sortBy">
+          <option value="sevCount">Severity ▸ Count</option>
+          <option value="count">Count (desc)</option>
+          <option value="label">Label (A→Z)</option>
+        </select>
+      </div>
+    </section>
+
+    <main class="grid">
+      <section class="card">
+        <h3>Summary</h3>
+        <div id="summary" class="headline">Run an analysis to see results.</div>
+        <div id="totals" class="chips"></div>
+        <div id="anomaly" class="chips"></div>
+      </section>
+
+      <section class="card">
+        <div class="cardHead">
+          <h3>Incidents</h3>
+          <span id="rowsInfo" class="muted"></span>
+        </div>
+        <div class="tableWrap">
+          <table class="table" id="incidents">
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th class="w120">Severity</th>
+                <th class="w90">Count</th>
+                <th class="w140">Why</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div id="emptyInc" class="empty">No incidents match your filters.</div>
+        </div>
+      </section>
+
+      <section class="card span2">
+        <div class="cardHead">
+          <h3>Samples</h3>
+          <div class="legend">
+            <span class="chip chipHigh">High</span>
+            <span class="chip chipMed">Medium</span>
+            <span class="chip chipLow">Low</span>
+          </div>
+        </div>
+        <div id="samples" class="samples"></div>
+      </section>
+
+      <section class="card span2">
+        <div class="cardHead">
+          <h3>Smart Support Chat</h3>
+          <span class="muted">Ask SOP/process questions</span>
+        </div>
+        <div class="chatBar">
+          <input id="chatQ" type="text" placeholder='e.g. "How to fix database timeout?"'>
+          <button id="chatAsk">Ask</button>
+        </div>
+        <div id="chatAns" class="chatAns"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Clusters Modal -->
+  <div id="clustersModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">
+          <strong id="clustersTitle">Discover New Patterns</strong>
+          <span id="clustersMeta" class="muted"></span>
+        </div>
+        <div class="modal-actions">
+          <label class="toggle">
+            <input id="onlyUnknown" type="checkbox" checked />
+            <span>Unknown only</span>
+          </label>
+          <button id="clustersClose" aria-label="Close">✕</button>
+        </div>
+      </div>
+      <div id="clustersBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+  const API = (path) => 'http://127.0.0.1:8000' + path;
+
+  // --- Elements ---
+  const runBtn = document.getElementById('run');
+  const exportBtn = document.getElementById('exportPdf');
+  const reindexBtn = document.getElementById('reindex');
+  const fileInput = document.getElementById('file');
+  const statusEl = document.getElementById('status');
+  const totalsEl = document.getElementById('totals');
+  const summaryEl = document.getElementById('summary');
+  const anomalyEl = document.getElementById('anomaly');
+  const incidentsTBody = document.querySelector('#incidents tbody');
+  const rowsInfo = document.getElementById('rowsInfo');
+  const emptyInc = document.getElementById('emptyInc');
+  const samplesEl = document.getElementById('samples');
+  const searchEl = document.getElementById('search');
+  const sortEl = document.getElementById('sortBy');
+  const segBtns = Array.from(document.querySelectorAll('.segmented .seg'));
+  const chatQ = document.getElementById('chatQ');
+  const chatAsk = document.getElementById('chatAsk');
+  const chatAns = document.getElementById('chatAns');
+  const clusterBtn = document.getElementById('clusterBtn');
+  const clustersModal = document.getElementById('clustersModal');
+  const clustersClose = document.getElementById('clustersClose');
+  const clustersBody = document.getElementById('clustersBody');
+  const clustersTitle = document.getElementById('clustersTitle');
+  const clustersMeta = document.getElementById('clustersMeta');
+  const onlyUnknown = document.getElementById('onlyUnknown');
+
+  let fullIncidents = [];
+  let viewIncidents = [];
+  let currentIncident = null;
+  let LAST_CLUSTER_DATA = null;
+
+  // --- Utils ---
+  function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+  function sevRank(s){ return s === 'High' ? 0 : s === 'Medium' ? 1 : 2; }
+  function badge(text){ return `<span class="chip">${escapeHtml(text)}</span>`; }
+  function sevChip(s){
+    const cls = s==='High'?'chipHigh':s==='Medium'?'chipMed':'chipLow';
+    return `<span class="chip ${cls}">${escapeHtml(s||'-')}</span>`;
+  }
+
+  function highlight(msg, spans){
+    if(!spans || !spans.length) return escapeHtml(msg);
+    let out = "", i = 0;
+    spans.forEach(([s,e]) => {
+      out += escapeHtml(msg.slice(i, s)) + "<mark>" + escapeHtml(msg.slice(s, e)) + "</mark>";
+      i = e;
+    });
+    out += escapeHtml(msg.slice(i));
+    return out;
+  }
+
+  function groupIncidents(incs){
+    const map = new Map();
+    for(const inc of incs){
+      const key = inc.label;
+      if(!map.has(key)){
+        map.set(key, {...inc, count:Number(inc.count||0), samples:[...(inc.samples||[])]});
+      }else{
+        const ref = map.get(key);
+        ref.count += Number(inc.count||0);
+        ref.samples = (ref.samples||[]).concat(inc.samples||[]).slice(0,5);
+        if(sevRank(inc.severity) < sevRank(ref.severity)) ref.severity = inc.severity;
+        ref.why = ref.why || inc.why || {};
+        ref.why.merged = true;
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  function applyFilters(){
+    const q = (searchEl.value||'').toLowerCase();
+    const active = segBtns.find(b=>b.classList.contains('active'))?.dataset.sev || 'ALL';
+    let arr = groupIncidents(fullIncidents);
+    arr = arr.filter(inc => (active==='ALL' || inc.severity===active) && (!q || inc.label.toLowerCase().includes(q)));
+    if(sortEl.value==='sevCount'){
+      arr.sort((a,b)=> sevRank(a.severity)-sevRank(b.severity) || b.count-a.count || a.label.localeCompare(b.label));
+    }else if(sortEl.value==='count'){
+      arr.sort((a,b)=> b.count-a.count || a.label.localeCompare(b.label));
+    }else{
+      arr.sort((a,b)=> a.label.localeCompare(b.label));
+    }
+    viewIncidents = arr;
+    renderIncidents();
+  }
+
+  function renderIncidents(){
+    incidentsTBody.innerHTML = '';
+    emptyInc.style.display = viewIncidents.length ? 'none' : 'block';
+    rowsInfo.textContent = viewIncidents.length ? `${viewIncidents.length} incident type(s)` : '';
+    viewIncidents.forEach(inc => {
+      const tr = document.createElement('tr');
+      const why = inc.why?.rule_id || inc.why?.model || (inc.why?.merged ? 'merged' : '-');
+      tr.innerHTML = `
+        <td class="labelCell">${escapeHtml(inc.label)}</td>
+        <td class="w120">${sevChip(inc.severity)}</td>
+        <td class="w90 mono">${inc.count}</td>
+        <td class="w140 mono">${escapeHtml(why)}</td>`;
+      tr.onclick = () => showSamples(inc);
+      incidentsTBody.appendChild(tr);
+    });
+    if(viewIncidents[0]) showSamples(viewIncidents[0]);
+  }
+
+  function showSamples(inc){
+    samplesEl.innerHTML = '';
+    currentIncident = inc;
+    const meta = document.createElement('div');
+    meta.className = 'sampleMeta';
+    meta.innerHTML = `
+      <div class="sampleTitle">
+        <strong>${escapeHtml(inc.label)}</strong>
+        ${sevChip(inc.severity)}
+        <span class="muted">• ${inc.count} line(s) ${inc.service?`• ${escapeHtml(inc.service)}`:''}</span>
+      </div>
+      <div class="sampleRC">
+        <div><span class="muted">Root cause</span><p>${escapeHtml(inc.root_cause || '-')}</p></div>
+        <div><span class="muted">Recommendations</span>
+          <ul>${(inc.recommend||[]).map(r=>`<li>${escapeHtml(r)}</li>`).join('')}</ul>
+        </div>
+        ${Array.isArray(inc.sop_links) && inc.sop_links.length ? `
+          <div style="grid-column: 1 / -1"><span class="muted">SOP Links</span>
+            <ul>${inc.sop_links.map(l=>`<li><a href="${l.url}" target="_blank" rel="noopener">${escapeHtml(l.title||l.url)}</a></li>`).join('')}</ul>
+          </div>` : ``}
+      </div>`;
+    samplesEl.appendChild(meta);
+    (inc.samples||[]).forEach(s=>{
+      const pre = document.createElement('pre');
+      pre.innerHTML = highlight(s.message||'', inc.why?.spans);
+      samplesEl.appendChild(pre);
+    });
+  }
+
+  // --- Actions ---
+  runBtn.addEventListener('click', analyze);
+  async function analyze(){
+    const f = fileInput.files[0];
+    if(!f){ alert('Choose a file first'); return; }
+    statusEl.innerHTML = '<span class="spinner"></span> Analyzing…';
+    summaryEl.textContent = '';
+    totalsEl.innerHTML = '';
+    anomalyEl.innerHTML = '';
+    incidentsTBody.innerHTML = '';
+    samplesEl.innerHTML = '';
+    rowsInfo.textContent = '';
+    emptyInc.style.display = 'none';
+    try{
+      const form = new FormData(); form.append('file', f);
+      const res = await fetch(API('/analyze'),{ method:'POST', body:form });
+      if(!res.ok){ throw new Error(await res.text()); }
+      const data = await res.json();
+      statusEl.textContent = '';
+      totalsEl.innerHTML = Object.entries(data.totals||{}).map(([k,v])=> badge(`${k}: ${v}`)).join('');
+      summaryEl.textContent = data.summary?.headline || 'Analysis complete';
+      anomalyEl.innerHTML = (data.anomaly?.spikes?.length) ? `<span class="chip chipWarn">Spike(s): ${data.anomaly.spikes.join(', ')}</span>` : '';
+      fullIncidents = data.incidents || [];
+      applyFilters();
+    }catch(e){
+      console.error(e);
+      statusEl.textContent = 'Error: ' + (e?.message || e);
+    }
+  }
+
+  segBtns.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      segBtns.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      applyFilters();
+    });
+  });
+  searchEl.addEventListener('input', applyFilters);
+  sortEl.addEventListener('change', applyFilters);
+
+  exportBtn.addEventListener('click', async ()=>{
+    const f = fileInput.files[0];
+    if(!f){ alert('Choose a log file first'); return; }
+    const form = new FormData(); form.append('file', f);
+    try{
+      const res = await fetch(API('/report'), {method:'POST', body:form});
+      if(!res.ok){ throw new Error(await res.text()); }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'SmartSupport_Report.pdf'; a.click();
+      URL.revokeObjectURL(url);
+    }catch(e){
+      alert('Export failed: ' + (e?.message || e));
+    }
+  });
+
+  reindexBtn.addEventListener('click', async ()=>{
+    statusEl.innerHTML = '<span class="spinner"></span> Reindexing…';
+    try{
+      const res = await fetch(API('/sop/reindex'), {method:'POST'});
+      const data = await res.json();
+      statusEl.textContent = data.ok ? `Reindexed ${data.docs_indexed} SOP doc(s)` : (data.error || 'Reindex failed');
+    }catch(e){
+      statusEl.textContent = 'Reindex failed: ' + (e?.message || e);
+    }
+  });
+
+  chatAsk?.addEventListener('click', askChat);
+  chatQ?.addEventListener('keydown', (e)=>{ if(e.key==='Enter') askChat(); });
+  async function askChat(){
+    const q = (chatQ?.value || '').trim();
+    if(!q) return;
+    chatAns.innerHTML = '<span class="spinner"></span> Searching…';
+    try{
+      const res = await fetch(API('/chat'), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ q })
+      });
+      if(!res.ok){ throw new Error(await res.text()); }
+      const data = await res.json();
+      const src = (data.sources||[]).map(s=>`
+        <div class="src">
+          <div class="mono">${escapeHtml(s.path)} • score ${s.score}</div>
+          <div class="excerpt">${escapeHtml(s.excerpt||'')}</div>
+        </div>`).join('');
+      chatAns.innerHTML = `
+        <div class="ans">${escapeHtml(data.answer||'')}</div>
+        <div class="sources">${src || '<span class="muted">No sources found.</span>'}</div>`;
+    }catch(e){
+      chatAns.textContent = 'Chat failed: ' + (e?.message || e);
+    }
+  }
+
+  // --- Clustering UI ---
+  clusterBtn.addEventListener('click', async () => {
+    const f = fileInput.files[0];
+    if (!f) { alert('Choose a file first'); return; }
+    clusterBtn.disabled = true;
+    statusEl.innerHTML = '<span class="spinner"></span> Discovering…';
+    try {
+      const form = new FormData(); form.append('file', f);
+      const res = await fetch(API('/clusterize'), { method: 'POST', body: form });
+      if (!res.ok) {
+        const body = await res.text().catch(()=> '');
+        throw new Error(`HTTP ${res.status} ${res.statusText}${body ? ' — ' + body : ''}`);
+      }
+      const data = await res.json();
+      statusEl.textContent = '';
+      LAST_CLUSTER_DATA = data;
+      onlyUnknown.checked = true;
+      renderClusters();
+      clustersModal.classList.remove('hidden');
+    } catch (e) {
+      console.error(e);
+      statusEl.textContent = 'Clusterize failed: ' + (e?.message || e);
+    } finally {
+      clusterBtn.disabled = false;
+    }
+  });
+
+  function renderClusters() {
+    const data = LAST_CLUSTER_DATA || {};
+    const unknown = data.unknown || {};
+    const clusters = data.clusters || {};
+    const total = Number.isFinite(data.summary?.clusters) ? data.summary.clusters : Object.keys(clusters).length;
+    const unkCount = Number.isFinite(data.summary?.unknown) ? data.summary.unknown : Object.keys(unknown).length;
+
+    clustersTitle.textContent = 'Discover New Patterns';
+    clustersMeta.textContent = `${total} clusters • ${unkCount} unknown`;
+    clustersBody.innerHTML = '';
+
+    const makeBlock = (id, obj, isUnknown) => {
+      const div = document.createElement('div');
+      div.className = 'cluster';
+      const patt = draftPattern(obj.samples || []);
+      const defaultLabel = isUnknown ? 'New Pattern' : 'Known Pattern';
+      const defaultSeverity = isUnknown ? 'High' : 'Medium';
+
+      div.innerHTML = `
+        <div class="meta">
+          <strong>Cluster #${id}</strong>
+          <span class="${isUnknown ? 'badge-unk' : 'badge-known'}">${isUnknown ? 'NEW pattern' : 'Known'}</span>
+          <span class="badge-cnt">Count: ${obj.count}</span>
+        </div>
+
+        <div class="formrow">
+          <input type="text" class="clabel" placeholder="Rule label" value="${escapeHtml(defaultLabel)}" />
+          <select class="csev">
+            <option ${defaultSeverity==='High'?'selected':''}>High</option>
+            <option ${defaultSeverity==='Medium'?'selected':''}>Medium</option>
+            <option ${defaultSeverity==='Low'?'selected':''}>Low</option>
+          </select>
+        </div>
+
+        <div class="formrow">
+          <textarea class="cregex" placeholder="Draft regex pattern">${escapeHtml(patt)}</textarea>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" data-action="create-rule" data-id="${id}">Create Rule Draft</button>
+          <button class="btn warn" data-action="mark-fp" data-id="${id}">Mark False Positive</button>
+          <button class="btn ghost" data-action="copy-samples" data-id="${id}">Copy 5 Samples</button>
+        </div>
+
+        <div class="samples">
+          ${(obj.samples || []).map(s => `<pre>${escapeHtml(s)}</pre>`).join('')}
+        </div>
+      `;
+      div.dataset.clusterId = id;
+      div.dataset.isUnknown = isUnknown ? '1' : '0';
+      div._samples = obj.samples || [];
+      return div;
+    };
+
+    // Unknown first
+    Object.entries(unknown).forEach(([id, obj]) => clustersBody.appendChild(makeBlock(id, obj, true)));
+    // Then known
+    if (!onlyUnknown.checked) {
+      Object.entries(clusters).forEach(([id, obj]) => {
+        if (unknown[id]) return;
+        clustersBody.appendChild(makeBlock(id, obj, false));
+      });
+    }
+
+    if (!clustersBody.children.length) {
+      clustersBody.innerHTML = `<div class="muted">No clusters to show for this filter.</div>`;
+    }
+  }
+
+  clustersBody.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if(!btn) return;
+    const action = btn.dataset.action;
+    const block  = btn.closest('.cluster');
+    const id     = block?.dataset.clusterId;
+    const label  = block?.querySelector('.clabel')?.value?.trim() || 'New Pattern';
+    const sev    = block?.querySelector('.csev')?.value || 'Medium';
+    const regex  = block?.querySelector('.cregex')?.value?.trim() || '';
+    const samples = block?._samples || [];
+    try {
+      btn.disabled = true;
+      if (action === 'create-rule') {
+        const payload = { type:'propose_rule', cluster_id:id, label, severity:sev, pattern:regex, samples };
+        await postFeedback(payload);
+        btn.textContent = 'Draft sent ✓';
+      } else if (action === 'mark-fp') {
+        const payload = { type:'cluster_feedback', verdict:'false_positive', cluster_id:id, samples };
+        await postFeedback(payload);
+        btn.textContent = 'Marked ✓';
+      } else if (action === 'copy-samples') {
+        const text = (samples || []).slice(0,5).join('\n');
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied ✓';
+        setTimeout(()=> btn.textContent='Copy 5 Samples', 1200);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Action failed: ' + (err?.message || err));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  onlyUnknown?.addEventListener('change', renderClusters);
+  clustersClose.addEventListener('click', () => clustersModal.classList.add('hidden'));
+  clustersModal.addEventListener('click', (e) => { if (e.target === clustersModal) clustersModal.classList.add('hidden'); });
+
+  // --- Feedback helpers ---
+  function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function draftPattern(samples){
+    const s = (samples?.[0] || '').trim();
+    if(!s) return '';
+    let p = escapeRegex(s);
+    p = p
+      .replace(/\buser[=_: ]?[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, 'user[=_: ]?[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}')
+      .replace(/\borg[_-]?id[=_: ]?\d+\b/gi, 'org[_-]?id[=_: ]?\\d+')
+      .replace(/\b\d{4,}\b/g, '\\d{4,}')
+      .replace(/\b[0-9a-fA-F-]{8,}\b/g, '[0-9a-fA-F-]{8,}')
+      .replace(/\b\d+\b/g, '\\d+')
+      .replace(/\s+/g, '\\s+');
+    return p;
+  }
+  async function postFeedback(payload){
+    const res = await fetch(API('/feedback'), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){ throw new Error(await res.text()); }
+    return res.json();
+  }
+  </script>
+</body>
+</html>
